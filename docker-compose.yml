@@ -1,0 +1,81 @@
+services:
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "8082:8082"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - qa-generator
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+      # Server-side env var: Next.js rewrites /api/* to this URL (docker service name)
+      - API_BASE_URL=http://xinren-rag:49080
+    env_file:
+      - path: .env
+        required: false
+    depends_on:
+      - xinren-rag
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  qa-generator:
+    build:
+      context: ./question-answer-generator
+      dockerfile: Dockerfile
+    environment:
+      - NODE_ENV=production
+    # The app's own .env (same file as native hosting); keeps its keys apart from xinren-rag's
+    env_file:
+      - path: ./question-answer-generator/.env
+        required: false
+    restart: unless-stopped
+    networks:
+      - app-network
+
+  xinren-rag:
+    build:
+      context: ./xinren-rag
+      dockerfile: Dockerfile
+    environment:
+      - RAG_CONFIG_FILE=/app/config/server.yml
+      - PYTHONPATH=/app/app
+      # HF_HUB_OFFLINE is intentionally NOT set here so the model is downloaded
+      # on first run and stored in the xinren-rag-models volume.
+      # Set HF_HUB_OFFLINE=1 in .env after the first successful startup.
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - xinren-rag-data:/app/data
+      - xinren-rag-cache:/app/cache
+      - xinren-rag-models:/app/models
+    restart: unless-stopped
+    networks:
+      - app-network
+
+volumes:
+  # Data persists across container restarts and docker compose down.
+  # Use "docker compose down --volumes" only if you want to wipe everything.
+  xinren-rag-data:
+    # Seeded automatically from the image on first run (xlsx source files)
+  xinren-rag-cache:
+    # Chroma vector DB caches; rebuilt automatically if deleted
+  xinren-rag-models:
+    # HuggingFace BGE model (~600 MB); downloaded on first run
+
+networks:
+  app-network:
+    driver: bridge
