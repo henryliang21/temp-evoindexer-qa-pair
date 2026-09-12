@@ -1,0 +1,11 @@
+node_modules
+.next
+.env*
+!.env.example
+ecosystem.config.js
+qa-generator.nginx.conf
+*.md
+docs
+materials
+tests
+vitest.config.ts
